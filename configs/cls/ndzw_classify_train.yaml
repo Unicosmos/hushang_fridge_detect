@@ -1,0 +1,41 @@
+# Ultralytics YOLO 🚀, AGPL-3.0 license
+
+# 项目设置
+project: /root/hyg/projects/hushang_fridge_detect
+name: hyg_cls_ndzw_clean_dirty
+
+# 关键：必须明确设置为分类任务
+task: classify
+
+# 模型配置 - 使用分类专用模型
+model: models/yolo11n-cls.pt
+
+# 数据集配置 - 使用绝对路径
+# 注意：对于分类任务，数据集格式应为包含类别文件夹的结构
+data: /root/hyg/projects/hushang_fridge_detect/data/hyg_cls_ndzw_split
+
+# 训练超参数
+epochs: 50
+batch: 16  # 减小批次大小以避免内存问题
+imgsz: 640
+workers: 4
+amp: true
+patience: 10
+
+# 优化器设置
+optimizer: AdamW
+lr0: 0.001
+lrf: 0.01
+momentum: 0.937
+weight_decay: 0.0005
+
+# 数据增强（分类任务的增强设置）
+mixup: 0.1  # 分类任务推荐使用较小的mixup
+mosaic: 0.0  # 分类任务通常不使用mosaic
+flipud: 0.05
+fliplr: 0.5
+
+# 其他设置
+save: true
+save_period: 10
+plots: true
