@@ -163,6 +163,105 @@ def process_single_result(result, config, task_type, save_dir, result_index):
                     )
 
                 label_studio_data["predictions"][0]["result"].append(result_item)
+            elif task_type == "obb":
+                # OBB任务：使用polygonlabels格式，将旋转框转换为多边形点集
+                points = []
+                
+                # 1. 检查是否有直接的四个点坐标数据 (x1y1x2y2x3y3x4y4)
+                # 检查detection中是否直接包含四个角点数据
+                if "obb" in detection:
+                    obb_data = detection["obb"]
+                    if isinstance(obb_data, list) and len(obb_data) >= 8:
+                        # YOLO OBB格式: [x1, y1, x2, y2, x3, y3, x4, y4, ...]
+                        x_coords = obb_data[0::2][:4]  # 获取前4个x坐标
+                        y_coords = obb_data[1::2][:4]  # 获取前4个y坐标
+                        
+                        # 转换为百分比坐标
+                        for x, y in zip(x_coords, y_coords):
+                            x_pct = (x / original_width) * 100
+                            y_pct = (y / original_height) * 100
+                            points.append([round(x_pct, 6), round(y_pct, 6)])
+                    elif isinstance(obb_data, dict) and "points" in obb_data:
+                        # 检查dict格式的points
+                        for point in obb_data["points"]:
+                            if isinstance(point, (list, tuple)) and len(point) >= 2:
+                                x_pct = (point[0] / original_width) * 100
+                                y_pct = (point[1] / original_height) * 100
+                                points.append([round(x_pct, 6), round(y_pct, 6)])
+                
+                # 2. 检查box中是否有四个点坐标
+                if not points:
+                    box = detection.get("box", {})
+                    
+                    # 检查box中是否有直接的四个角点
+                    if "points" in box and isinstance(box["points"], list):
+                        # 如果box中有points字段，直接使用这些点
+                        for point in box["points"]:
+                            if isinstance(point, (list, tuple)) and len(point) >= 2:
+                                x_pct = (point[0] / original_width) * 100
+                                y_pct = (point[1] / original_height) * 100
+                                points.append([round(x_pct, 6), round(y_pct, 6)])
+                    
+                    # 检查box是否包含四个点的坐标信息
+                    elif all(key in box for key in ["x1", "y1", "x2", "y2", "x3", "y3", "x4", "y4"]):
+                        # 直接使用box中的四个角点坐标
+                        corners = [
+                            [box["x1"], box["y1"]],
+                            [box["x2"], box["y2"]],
+                            [box["x3"], box["y3"]],
+                            [box["x4"], box["y4"]]
+                        ]
+                        
+                        for x, y in corners:
+                            x_pct = (x / original_width) * 100
+                            y_pct = (y / original_height) * 100
+                            points.append([round(x_pct, 6), round(y_pct, 6)])
+                    
+                    # 3. 回退方案：如果没有直接的四个点，尝试从box的基本信息计算
+                    elif all(key in box for key in ["x1", "y1", "x2", "y2"]):
+                        # 只有矩形框信息，尝试从矩形框生成四个角点
+                        x1 = box.get("x1", 0)
+                        y1 = box.get("y1", 0)
+                        x2 = box.get("x2", 0)
+                        y2 = box.get("y2", 0)
+                        
+                        # 生成矩形的四个角点（左上、右上、右下、左下）
+                        corners = [
+                            [x1, y1],  # 左上
+                            [x2, y1],  # 右上
+                            [x2, y2],  # 右下
+                            [x1, y2]   # 左下
+                        ]
+                        
+                        for x, y in corners:
+                            x_pct = (x / original_width) * 100
+                            y_pct = (y / original_height) * 100
+                            points.append([round(x_pct, 6), round(y_pct, 6)])
+                
+                # 创建与obb_ex.json格式一致的结果项
+                result_item = {
+                    "original_width": original_width,
+                    "original_height": original_height,
+                    "image_rotation": 0,
+                    "value": {
+                        "points": points,
+                        "closed": True,
+                        "polygonlabels": [detection.get("name", "object")],
+                    },
+                    "id": f"{datetime.now().strftime('%Y%m%d%H%M%S')}_{idx}",
+                    "from_name": "label",
+                    "to_name": "image",
+                    "type": "polygonlabels",
+                    "origin": "prediction"
+                }
+                
+                # 添加置信度信息
+                if "confidence" in detection:
+                    result_item["value"]["confidence"] = round(
+                        detection["confidence"], 5
+                    )
+                
+                label_studio_data["predictions"][0]["result"].append(result_item)
             else:
                 # 检测任务：使用rectangle格式
                 box = detection.get("box", {})
@@ -910,4 +1009,3 @@ if __name__ == "__main__":
 # python predict_yolo.py --model yolo11n.pt --source 0 --show  # 摄像头
 # python predict_yolo.py --model yolo11n.pt --source video.mp4 --save --save-json
 # python predict_yolo.py --model yolo11n.pt --source "path/*.jpg" --save-crop --classes 0 2
-# python predict_yolo.py --model model/yolo11n.pt  --source data/hyg_interior_0929_2/other_image  --save-json --data-prefix "data/local-files/?d=/root/source/data/hsay/hsay-weekly-freezer"

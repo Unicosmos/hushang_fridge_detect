@@ -7,6 +7,7 @@
 - 删除不匹配的图片
 - 选择匹配/不匹配的文件
 - 备份同名文件
+- 复制与参考目录不匹配的图片（A-B=C的纯图片diff）
 
 使用示例:
 # 复制标签文件
@@ -20,6 +21,9 @@ python dataset_toolkit.py copy-matched --source-dir ./images --reference-dir ./l
 
 # 复制与标签不匹配的图片
 python dataset_toolkit.py copy-matched --source-dir ./images --reference-dir ./labels --output-dir ./unmatched_images --no-match
+
+# 复制与参考目录不匹配的图片（A-B=C的纯图片diff）
+python dataset_toolkit.py copy-unmatched-images --source-dir ./images --reference-dir ./labels --output-dir ./diff_images
 
 # 移动同名标签文件到备份目录
 python dataset_toolkit.py move-matched --source-dir ./labels1 --reference-dir ./labels2 --backup-dir ./backup
@@ -43,7 +47,9 @@ def get_extensions(file_type):
         'label': ['.txt'],
         'json': ['.json']
     }
-    return extensions_map.get(file_type, [])
+    result = extensions_map.get(file_type, [])
+    print(f"获取文件类型 '{file_type}' 的扩展名: {result}")
+    return result
 
 def ensure_directory_exists(directory):
     """确保目录存在，如果不存在则创建"""
@@ -52,8 +58,8 @@ def ensure_directory_exists(directory):
         print(f"已创建目录: {directory}")
     return True
 
-def get_filenames_without_extension(directory, *extensions):
-    """获取目录中指定扩展名的所有文件名（不含扩展名）"""
+def get_filenames_without_extension(directory, *extensions, recursive=False):
+    """获取目录中指定扩展名的所有文件名（不含扩展名），可选择是否递归遍历子目录"""
     if not os.path.exists(directory):
         print(f"警告: 目录 '{directory}' 不存在")
         return {}
@@ -67,23 +73,38 @@ def get_filenames_without_extension(directory, *extensions):
             ext_list.append(ext)
     
     filenames = {}
-    for f in os.listdir(directory):
-        file_path = os.path.join(directory, f)
-        if os.path.isfile(file_path):
-            name, ext = os.path.splitext(f)
-            if ext.lower() in ext_list:
-                filenames[name] = f
+    
+    if recursive:
+        # 递归遍历目录，但只使用文件名（不含扩展名）作为键值
+        for root, _, files in os.walk(directory):
+            for f in files:
+                file_path = os.path.join(root, f)
+                name, ext = os.path.splitext(f)
+                if ext.lower() in ext_list:
+                    # 只使用文件名（不含扩展名）作为键值
+                    key = name
+                    # 保存相对路径以用于后续的文件复制
+                    rel_path = os.path.relpath(root, directory)
+                    filenames[key] = os.path.join(rel_path, f)
+    else:
+        # 仅遍历当前目录
+        for f in os.listdir(directory):
+            file_path = os.path.join(directory, f)
+            if os.path.isfile(file_path):
+                name, ext = os.path.splitext(f)
+                if ext.lower() in ext_list:
+                    filenames[name] = f
     
     return filenames
 
-def compare_directories(source_dir, reference_dir, source_extensions, reference_extensions):
-    """比较两个目录中的文件，返回匹配和不匹配的文件名集合"""
+def compare_directories(source_dir, reference_dir, source_extensions, reference_extensions, recursive=False):
+    """比较两个目录中的文件，返回匹配和不匹配的文件名集合，可选择是否递归遍历子目录"""
     # 获取两个文件夹中的文件名（不含扩展名）
-    source_files = get_filenames_without_extension(source_dir, source_extensions)
-    reference_files = set(get_filenames_without_extension(reference_dir, reference_extensions).keys())
+    source_files = get_filenames_without_extension(source_dir, source_extensions, recursive=recursive)
+    reference_files = set(get_filenames_without_extension(reference_dir, reference_extensions, recursive=recursive).keys())
     
-    print(f"在源目录找到 {len(source_files)} 个文件")
-    print(f"在参考目录找到 {len(reference_files)} 个文件")
+    print(f"在源目录{'(递归)' if recursive else ''}找到 {len(source_files)} 个文件")
+    print(f"在参考目录{'(递归)' if recursive else ''}找到 {len(reference_files)} 个文件")
     
     # 找到匹配和不匹配的文件
     matched_files = set(source_files.keys()) & reference_files
@@ -181,30 +202,36 @@ def remove_files(files_dict, directory, files_to_remove, backup_dir=None):
     
     return list(files_to_remove), removed_count
 
-def remove_unmatched_images(images_dir, reference_dir, reference_extensions, backup_dir=None):
-    """删除图片文件夹中与参考文件夹不同名的图片文件"""
+def remove_unmatched_images(images_dir, reference_dir, reference_extensions, backup_dir=None, recursive=False):
+    """删除图片文件夹中与参考文件夹不同名的图片文件，可选择是否递归遍历子目录"""
     image_extensions = get_extensions('image')
     
     # 比较目录获取匹配和不匹配的文件
     image_files, _, unmatched_files = compare_directories(
-        images_dir, reference_dir, image_extensions, reference_extensions
+        images_dir, reference_dir, image_extensions, reference_extensions, recursive=recursive
     )
     
     # 删除不匹配的文件
     return remove_files(image_files, images_dir, unmatched_files, backup_dir)
 
 def copy_files_to_directory(files_dict, source_dir, target_files, output_dir):
-    """将指定的文件复制到输出目录"""
+    """将指定的文件复制到输出目录，保留目录结构"""
     # 确保输出目录存在
     ensure_directory_exists(output_dir)
     
     # 复制文件到输出目录
     copied_count = 0
     for filename in target_files:
-        # 获取原始文件名（包含扩展名）
+        # 获取原始文件名（包含扩展名和可能的路径）
         original_name = files_dict[filename]
         source_path = os.path.join(source_dir, original_name)
         dest_path = os.path.join(output_dir, original_name)
+        
+        # 如果文件路径包含子目录，确保目标子目录存在
+        dest_dir = os.path.dirname(dest_path)
+        if dest_dir and not os.path.exists(dest_dir):
+            os.makedirs(dest_dir, exist_ok=True)
+            print(f"已创建子目录: {dest_dir}")
         
         try:
             shutil.copy2(source_path, dest_path)
@@ -217,11 +244,11 @@ def copy_files_to_directory(files_dict, source_dir, target_files, output_dir):
     # 返回处理的文件列表
     return list(target_files)
 
-def copy_matching_files(source_dir, reference_dir, source_extensions, reference_extensions, output_dir, match=True):
-    """找到源文件夹中与参考文件夹同名/不同名的文件，并复制到输出目录"""
+def copy_matching_files(source_dir, reference_dir, source_extensions, reference_extensions, output_dir, match=True, recursive=False):
+    """找到源文件夹中与参考文件夹同名/不同名的文件，并复制到输出目录，可选择是否递归遍历子目录"""
     # 比较目录获取匹配和不匹配的文件
     source_files, matched_files, unmatched_files = compare_directories(
-        source_dir, reference_dir, source_extensions, reference_extensions
+        source_dir, reference_dir, source_extensions, reference_extensions, recursive=recursive
     )
     
     # 选择要复制的文件
@@ -235,18 +262,46 @@ def copy_matching_files(source_dir, reference_dir, source_extensions, reference_
     # 复制文件
     return copy_files_to_directory(source_files, source_dir, target_files, output_dir)
 
+def copy_unmatched_images(source_dir, reference_dir, reference_extensions, output_dir, recursive=False):
+    """复制源文件夹中与参考文件夹不同名的图片文件（A-B=C的纯图片diff），可选择是否递归遍历子目录"""
+    image_extensions = get_extensions('image')
+    
+    print(f"执行copy_unmatched_images，递归模式: {recursive}")
+    print(f"源目录: {source_dir}, 参考目录: {reference_dir}")
+    
+    # 显式测试参考目录的递归查找
+    print(f"测试参考目录递归查找结果:")
+    ref_files_test = get_filenames_without_extension(reference_dir, reference_extensions, recursive=recursive)
+    print(f"  参考目录找到文件数量: {len(ref_files_test)}")
+    
+    # 比较目录获取不匹配的文件
+    source_files, _, unmatched_files = compare_directories(
+        source_dir, reference_dir, image_extensions, reference_extensions, recursive=recursive
+    )
+    
+    print(f"准备复制 {len(unmatched_files)} 个不匹配的图片文件（A-B=C的纯图片diff）{'(递归)' if recursive else ''}")
+    
+    # 复制不匹配的文件
+    return copy_files_to_directory(source_files, source_dir, unmatched_files, output_dir)
+
 def move_files_to_directory(files_dict, source_dir, target_files, backup_dir):
-    """将指定的文件移动到备份目录"""
+    """将指定的文件移动到备份目录，保留目录结构"""
     # 确保备份目录存在
     ensure_directory_exists(backup_dir)
     
     # 移动文件到备份目录
     moved_count = 0
     for filename in target_files:
-        # 获取原始文件名（包含扩展名）
+        # 获取原始文件名（包含扩展名和可能的路径）
         original_filename = files_dict[filename]
         source_path = os.path.join(source_dir, original_filename)
         dest_path = os.path.join(backup_dir, original_filename)
+        
+        # 如果文件路径包含子目录，确保目标子目录存在
+        dest_dir = os.path.dirname(dest_path)
+        if dest_dir and not os.path.exists(dest_dir):
+            os.makedirs(dest_dir, exist_ok=True)
+            print(f"已创建子目录: {dest_dir}")
         
         try:
             shutil.move(source_path, dest_path)
@@ -260,11 +315,11 @@ def move_files_to_directory(files_dict, source_dir, target_files, backup_dir):
     # 返回移动的文件列表
     return list(target_files)
 
-def move_matching_files(source_dir, reference_dir, extensions, backup_dir):
-    """将源文件夹中与参考文件夹同名的文件移动到备份目录"""
+def move_matching_files(source_dir, reference_dir, extensions, backup_dir, recursive=False):
+    """将源文件夹中与参考文件夹同名的文件移动到备份目录，可选择是否递归遍历子目录"""
     # 比较目录获取匹配的文件
     source_files, matched_files, _ = compare_directories(
-        source_dir, reference_dir, extensions, extensions
+        source_dir, reference_dir, extensions, extensions, recursive=recursive
     )
     
     # 移动匹配的文件
@@ -298,6 +353,9 @@ def main():
   # 复制与标签不匹配的图片
   python dataset_toolkit.py copy-matched --source-dir ./images --reference-dir ./labels --output-dir ./unmatched_images --no-match
   
+  # 复制与参考目录不匹配的图片（A-B=C的纯图片diff）
+  python dataset_toolkit.py copy-unmatched-images --source-dir ./images --reference-dir ./labels --output-dir ./diff_images
+  
   # 移动同名标签文件到备份目录
   python dataset_toolkit.py move-matched --source-dir ./labels1 --reference-dir ./labels2 --backup-dir ./backup
         """)
@@ -326,6 +384,13 @@ def main():
     copy_matched_parser.add_argument('--match', action='store_true', default=True, help='复制匹配的文件（默认）')
     copy_matched_parser.add_argument('--no-match', dest='match', action='store_false', help='复制不匹配的文件')
     
+    # 复制不匹配图片命令（A-B=C的纯图片diff）
+    copy_unmatched_parser = subparsers.add_parser('copy-unmatched-images', help='复制与参考文件不匹配的图片（A-B=C的纯图片diff）')
+    copy_unmatched_parser.add_argument('--source-dir', type=str, required=True, help='源图片目录路径')
+    copy_unmatched_parser.add_argument('--reference-dir', type=str, required=True, help='参考文件夹路径')
+    copy_unmatched_parser.add_argument('--reference-type', type=str, choices=['image', 'label', 'json'], default='image', help='参考文件类型（默认：image）')
+    copy_unmatched_parser.add_argument('--output-dir', type=str, required=True, help='输出目录路径')
+    copy_unmatched_parser.add_argument('-r', '--recursive', action='store_true', help='递归遍历子目录中的所有图片')
     # 移动匹配文件命令
     move_matched_parser = subparsers.add_parser('move-matched', help='移动与参考文件匹配的文件到备份目录')
     move_matched_parser.add_argument('--source-dir', type=str, required=True, help='源文件目录路径')
@@ -349,7 +414,7 @@ def main():
         reference_extensions = get_extensions(args.reference_type)
         
         # 确认操作
-        print("警告：此操作将删除图片文件夹中与参考文件夹不同名的图片文件！")
+        print(f"警告：此操作将删除图片文件夹中与参考文件夹不同名的图片文件{'(递归)' if hasattr(args, 'recursive') and args.recursive else ''}！")
         if args.backup_dir:
             print(f"文件将备份到: {args.backup_dir}")
         
@@ -360,7 +425,8 @@ def main():
         
         # 执行操作
         unmatched_files, removed_count = remove_unmatched_images(
-            args.images_dir, args.reference_dir, reference_extensions, args.backup_dir
+            args.images_dir, args.reference_dir, reference_extensions, args.backup_dir, 
+            recursive=getattr(args, 'recursive', False)
         )
         
         # 显示处理结果
@@ -375,7 +441,8 @@ def main():
         target_files = copy_matching_files(
             args.source_dir, args.reference_dir, 
             source_extensions, reference_extensions, 
-            args.output_dir, args.match
+            args.output_dir, args.match,
+            recursive=getattr(args, 'recursive', False)
         )
         
         # 显示处理结果
@@ -387,11 +454,25 @@ def main():
         
         # 执行操作
         moved_files = move_matching_files(
-            args.source_dir, args.reference_dir, extensions, args.backup_dir
+            args.source_dir, args.reference_dir, extensions, args.backup_dir,
+            recursive=getattr(args, 'recursive', False)
         )
         
         # 显示处理结果
         print_file_list(moved_files)
+        
+    elif args.command == 'copy-unmatched-images':
+        # 根据参考文件类型设置扩展名
+        reference_extensions = get_extensions(args.reference_type)
+        
+        # 执行操作
+        unmatched_files = copy_unmatched_images(
+            args.source_dir, args.reference_dir, reference_extensions, args.output_dir,
+            recursive=args.recursive
+        )
+        
+        # 显示处理结果
+        print_file_list(unmatched_files)
     
     else:
         parser.print_help()
