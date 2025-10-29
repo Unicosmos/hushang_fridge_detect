@@ -1,0 +1,45 @@
+## 测试配置文件
+# ============================================================================
+# 基础任务配置
+# ============================================================================
+task: detect
+# task: classify  # 任务类型：detect(目标检测), segment(实例分割), classify(图像分类), pose(姿态估计), obb(有向边界框)
+mode: predict   # 运行模式：train(训练), val(验证), predict(预测), export(导出), track(跟踪), benchmark(基准测试)
+
+
+project: /root/hyg/projects/hushang_fridge_detect # 项目根目录 "{customer}-{task_desc}"
+name: hyg_txzbj_predict  # 实验名称, "{customer}-{task_desc}-{date}-{mode}"
+exist_ok: false  # 是否允许覆盖已存在的实验目录
+
+
+# model: models/yolo11n-pose.pt 
+model:  hyg_txzbj_train_20251028101135/weights/best.pt
+
+# model: hyg_ice_obb_train_20251022183435/weights/best.pt
+# model: hyg_cls_ice_train_20251022182203/weights/best.pt
+# model: hyg_dlg_train_20251023162439/weights/best.pt
+# model: hyg_cls_dlg_train_20251024150657/weights/best.pt  #古茗-滴流管分类
+# model: A_hyg_results/coffee/hyg_coffee_train_20251013110948_n130/weights/best.pt  #沪上阿姨-咖啡机
+# model: A_hyg_results/txzbj/hyg_txzbj_train_20251017151635_n200/weights/best.pt  #台下制冰机
+
+
+# source: data/cls/hyg_ice_other
+# source: data/hyg_dlg/others
+# source: Archive_gm/251022/ice_maker_drip_tube-251022
+# source: data/hyg_coffee/hyg_coffee_1011_299/images
+# source: data/hyg_txzbj/hyg_txzbj_1016_77/images
+# source: csv_hsay/台下制冰机不一致_images
+source: hyg_txzbj_predict/id_1503_img_2.jpg
+
+save: true
+save_json: false
+save_txt: false
+
+# conf: 0.651
+
+# data_prefix: "data/local-files/?d=/root/hyg/projects/hushang_fridge_detect/data/source_hyg_swfq_1022"
+# data_prefix: "data/local-files/?d=/root/source/data/gm/ice_weight-251020"
+data_prefix: "data/local-files/?d=/root/source/data/hsay/hsay-montnly-bottom_ice_maker"
+
+# iou: 
+# max_det: 1

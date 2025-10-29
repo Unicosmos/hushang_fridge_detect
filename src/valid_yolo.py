@@ -1,4 +1,84 @@
 import os
+import sys
+
+# 添加项目根目录到Python路径，确保可以导入utils模块
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, project_root)
+
+# 在导入任何可能使用matplotlib的库之前，先导入中文显示修复模块
+try:
+    from utils.simple_fix_chinese import fix_matplotlib_chinese, MATPLOTLIB_CHINESE_FIXED, has_available_chinese_fonts, reapply_chinese_fix
+    # 立即应用修复
+    fix_matplotlib_chinese()
+except ImportError as e:
+    # 如果导入失败，提供备用的修复函数和必要的辅助函数
+    MATPLOTLIB_CHINESE_FIXED = False
+    
+    def fix_matplotlib_chinese():
+        try:
+            import matplotlib
+            # 简单的字体设置
+            font_config = {
+                'font.family': ['sans-serif'],
+                'font.sans-serif': ['DejaVu Sans', 'sans-serif'],
+                'axes.unicode_minus': False,
+                'text.usetex': False
+            }
+            matplotlib.rcParams.update(font_config)
+            # 尝试导入pyplot并设置
+            try:
+                from matplotlib import pyplot as plt
+                plt.rcParams.update(font_config)
+            except ImportError:
+                pass
+            global MATPLOTLIB_CHINESE_FIXED
+            MATPLOTLIB_CHINESE_FIXED = True
+        except ImportError:
+            pass
+    
+    def has_available_chinese_fonts():
+        """检查系统中是否有可用的中文字体"""
+        try:
+            import matplotlib.font_manager as fm
+            # 检查一些基本的中文字体标识符
+            available_fonts = [f.name.lower() for f in fm.fontManager.ttflist]
+            chinese_identifiers = ['noto', 'droid', 'hei', 'yahei', 'sim', 'chinese']
+            for font in available_fonts:
+                if any(identifier in font for identifier in chinese_identifiers):
+                    return True
+        except Exception:
+            pass
+        return False
+    
+    def reapply_chinese_fix(force=False):
+        """重新应用中文显示修复"""
+        global MATPLOTLIB_CHINESE_FIXED
+        if force:
+            MATPLOTLIB_CHINESE_FIXED = False
+        if not MATPLOTLIB_CHINESE_FIXED:
+            try:
+                font_config = {
+                    'font.family': ['sans-serif'],
+                    'font.sans-serif': ['WenQuanYi Micro Hei', 'SimHei', 'Microsoft YaHei', 'sans-serif'],
+                    'axes.unicode_minus': False,
+                    'text.usetex': False
+                }
+                matplotlib.rcParams.update(font_config)
+                MATPLOTLIB_CHINESE_FIXED = True
+                return True
+            except:
+                return False
+        return True
+    
+    def reapply_chinese_fix(force=False):
+        # force参数在此简单实现中被忽略，但保持函数签名一致
+        return fix_matplotlib_chinese()
+        
+    def has_available_chinese_fonts():
+        return True
+    
+    MATPLOTLIB_CHINESE_FIXED = False
+
 import psutil
 import threading
 import time
@@ -435,6 +515,11 @@ def main():
     if not mlflow_enabled:
         logger.info("MLflow集成已禁用")
 
+    # 在加载模型前重新应用matplotlib中文显示配置
+    # 这是因为ultralytics在内部可能会重置matplotlib配置
+    logger.info("重新应用matplotlib中文显示配置")
+    reapply_chinese_fix()
+    
     # 直接使用配置文件中指定的模型路径加载模型
     model = YOLO(config["model"])
 

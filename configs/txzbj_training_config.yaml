@@ -30,20 +30,20 @@ model: models/yolo11n.pt
 # model: oss://mos-aiflow/models/base/{task}/custom_model.pt  # OSS模型路径
 
 # 数据集配置文件路径
-data: data/hyg_txzbj_1017_93_split_90-10/data.yaml
+data: data/hyg_txzbj/hyg_txzbj_1027_split_95-5/data.yaml
 # data: oss://mos-aiflow/data/{task}/{dataset_name}/data.yaml  # OSS数据路径
 
 # ============================================================================
 # 训练超参数 (运行时可通过命令行覆盖)
 # ============================================================================
 # 核心训练参数 - 建议通过命令行设置以便灵活调整
-epochs: 200      # 训练轮数，建议：小数据集50-100，大数据集100-300
+epochs: 300      # 训练轮数，建议：小数据集50-100，大数据集100-300
 batch: 32       # 批次大小，-1表示自动选择，建议：根据GPU内存调整
 imgsz: 1024       # 输入图像尺寸，必须是32的倍数，常用：640, 1024, 1280
 device: 0     # 设备选择，null表示自动选择，可指定：0, [0,1], cpu
 workers: 16      # 数据加载进程数，建议：CPU核心数的1-2倍
 lr0: 0.0005        # 初始学习率，建议：SGD=0.01, Adam=0.001
-patience: 90     # 早停耐心值，建议：epochs的1/3到1/2
+patience: 80     # 早停耐心值，建议：epochs的1/3到1/2
 save_period: -1  # 模型保存周期，-1表示仅保存最佳模型
 cache: true     # 数据缓存，true可加速训练但占用更多内存
 resume: false    # 是否恢复训练

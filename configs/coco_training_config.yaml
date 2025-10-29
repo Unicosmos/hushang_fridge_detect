@@ -1,4 +1,3 @@
-######冰块称重数量obb
 # YOLO训练配置文件模板
 # 基于Ultralytics YOLO最佳实践和项目经验
 # 使用说明：复制此模板并根据具体任务需求修改相应参数
@@ -6,42 +5,48 @@
 # ============================================================================
 # 基础任务配置
 # ============================================================================
-task: obb  # 任务类型：detect(目标检测), segment(实例分割), classify(图像分类), pose(姿态估计), obb(有向边界框)
+task: detect  # 任务类型：detect(目标检测), segment(实例分割), classify(图像分类), pose(姿态估计), obb(有向边界框)
 mode: train   # 运行模式：train(训练), val(验证), predict(预测), export(导出), track(跟踪), benchmark(基准测试)
 
 # ============================================================================
 # 项目管理配置
 # ============================================================================
 project: /root/hyg/projects/hushang_fridge_detect # 项目根目录 "{customer}-{task_desc}"
-name: hyg_ice_obb_train # 实验名称, "{customer}-{task_desc}-{date}-{mode}"
+name: hyg_coco_train  # 实验名称, "{customer}-{task_desc}-{date}-{mode}"
 exist_ok: false  # 是否允许覆盖已存在的实验目录
 
 # ============================================================================
 # 模型和数据配置
 # ============================================================================
-# 预训练模型路径 - 根据任务类型选择合适的模型
-# model: hyg_iceobb_train_20251020193706/weights/best.pt
-# model: /root/zhifang/cruise/models/base/obb/yolo11n.pt  # 检测任务
+# 预训练模型路径 - 根据任务类型选择合适的模型 
+model: models/yolo11n.pt
+# model: A_hyg_results/hyg_interior_0929_2_train_150-200/weights/best.pts
+# model: A_hyg_results/hyg_interior_0929_2_train_100-150/weights/best.pt  # 检测任务
+
 # model: /root/zhifang/cruise/models/base/segment/yolo11n-seg.pt  # 分割任务
 # model: /root/zhifang/cruise/models/base/classify/yolo11n-cls.pt  # 分类任务
 # model: /root/zhifang/cruise/models/base/pose/yolo11n-pose.pt  # 姿态估计
-model: /root/zhifang/cruise/models/base/obb/yolo11s-obb.pt  # 有向边界框
+# model: /root/zhifang/cruise/models/base/obb/yolo11n-obb.pt  # 有向边界框
 # model: oss://mos-aiflow/models/base/{task}/custom_model.pt  # OSS模型路径
 
 # 数据集配置文件路径
-data: data/hyg_ice_obb_1022_split_90-10/data.yaml  # 数据集配置文件路径
+data: datasets/coco.yaml
 # data: oss://mos-aiflow/data/{task}/{dataset_name}/data.yaml  # OSS数据路径
 
 # ============================================================================
 # 训练超参数 (运行时可通过命令行覆盖)
 # ============================================================================
 # 核心训练参数 - 建议通过命令行设置以便灵活调整
-epochs: 300      # 训练轮数，建议：小数据集50-100，大数据集100-300
-batch: 32      # 批次大小，-1表示自动选择，建议：根据GPU内存调整
-imgsz: 1024      # 输入图像尺寸，必须是32的倍数，常用：640, 1024, 1280
+epochs: 50      # 训练轮数，建议：小数据集50-100，大数据集100-300
+batch: 16       # 适当增加批次大小以提高GPU利用率
+imgsz: 640       # 降低图像分辨率，显著减少计算量
+workers: 16       # 减少数据加载线程数，避免CPU瓶颈
+cache: disk       # 使用磁盘缓存而非内存缓存，避免OOM
+multi_scale: false       # 关闭多尺度训练，减少内存需求和计算量
+amp: true       # 启用自动混合精度训练，提高GPU利用率
+rect: true       # 启用矩形训练，可显著提高训练速度
 device: 0     # 设备选择，null表示自动选择，可指定：0, [0,1], cpu
-workers: 16      # 数据加载进程数，建议：CPU核心数的1-2倍
-lr0: 0.0005        # 初始学习率，建议：SGD=0.01, Adam=0.001
+lr0: 0.001        # 初始学习率，建议：SGD=0.01, Adam=0.001
 patience: 90     # 早停耐心值，建议：epochs的1/3到1/2
 save_period: -1  # 模型保存周期，-1表示仅保存最佳模型
 cache: true     # 数据缓存，true可加速训练但占用更多内存
@@ -62,19 +67,19 @@ time: null           # 训练时间限制(小时)
 # ============================================================================
 # 数据集配置
 # ============================================================================
-single_cls: true  # 是否将多类别数据集视为单类别
+single_cls: false  # 是否将多类别数据集视为单类别
 rect: false        # 是否使用矩形训练，可提高训练速度但可能影响精度
 
 # ============================================================================
 # 学习率调度配置
 # ============================================================================
-cos_lr: true        # 是否使用余弦学习率调度
-lrf: 0.05           # 最终学习率比例 (final_lr = lr0 * lrf)
+cos_lr: false        # 是否使用余弦学习率调度
+lrf: 0.01           # 最终学习率比例 (final_lr = lr0 * lrf)
 momentum: 0.937     # SGD动量
-weight_decay: 0.001 # 权重衰减，防止过拟合
+weight_decay: 0.0005 # 权重衰减，防止过拟合
 
 # 学习率预热配置
-warmup_epochs: 5.0    # 预热轮数
+warmup_epochs: 3.0    # 预热轮数
 warmup_momentum: 0.8  # 预热阶段的动量值
 warmup_bias_lr: 0.1   # 预热阶段bias层的学习率
 
@@ -132,15 +137,15 @@ fliplr: 0.0      # 水平翻转概率
 flipud: 0.0      # 垂直翻转概率
 
 # 混合增强
-mosaic: 0.8       # Mosaic增强概率，强烈推荐
-mixup: 0.1        # MixUp增强概率
+mosaic: 0.5       # 降低Mosaic增强概率以提高速度
+mixup: 0.0        # 关闭MixUp增强以提高速度
 copy_paste: 0.0   # Copy-Paste增强概率 (仅分割任务)
 copy_paste_mode: flip  # Copy-Paste模式
 
 # 高级增强
-auto_augment: randaugment  # 自动增强策略：randaugment/autoaugment/augmix
-erasing: 0.1      # 随机擦除概率
-cutmix: 0.1       # CutMix增强概率
+auto_augment: ''  # 关闭自动增强以提高速度
+erasing: 0.0      # 关闭随机擦除以提高速度
+cutmix: 0.0       # 关闭CutMix增强以提高速度
 bgr: 0.0          # BGR通道随机交换概率
 
 # ============================================================================

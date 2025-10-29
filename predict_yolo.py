@@ -55,9 +55,61 @@ def process_single_result(result, config, task_type, save_dir, result_index):
         bool: 是否成功保存
     """
     try:
-        # 获取原始JSON格式的结果
-        json_str = result.to_json()
-        yolo_data = json.loads(json_str)
+        # 直接从result对象获取数据，而不是通过to_json()方法
+        yolo_data = []
+        
+        # 根据任务类型直接从result对象获取检测结果
+        if task_type == "obb" and hasattr(result, "obb") and result.obb is not None:
+            # OBB任务：直接从result.obb获取数据
+            for i in range(len(result.obb)):
+                detection = {}
+                
+                # 获取置信度
+                if hasattr(result.obb, "conf") and result.obb.conf is not None:
+                    detection["confidence"] = result.obb.conf[i].item()
+                
+                # 获取类别ID
+                if hasattr(result.obb, "cls") and result.obb.cls is not None:
+                    detection["class_id"] = int(result.obb.cls[i].item())
+                
+                # 对于OBB任务，使用模型预测的实际类别名称
+                if hasattr(result, "names") and result.names:
+                    detection["name"] = result.names.get(detection.get("class_id", 0), "object")
+                else:
+                    detection["name"] = "object"
+                
+                # 获取OBB坐标并正确格式化
+                if hasattr(result.obb, "xyxyxyxy") and result.obb.xyxyxyxy is not None:
+                    # 获取坐标并确保是正确的格式
+                    obb_coords = result.obb.xyxyxyxy[i].cpu().numpy().flatten()
+                    detection["obb"] = obb_coords.tolist()
+                    
+                    # 添加box字段，使用正确的格式保存点坐标
+                    # 确保只使用4个点（每个点是[x,y]）
+                    detection["box"] = {
+                        "points": [
+                            [float(obb_coords[0]), float(obb_coords[1])],
+                            [float(obb_coords[2]), float(obb_coords[3])],
+                            [float(obb_coords[4]), float(obb_coords[5])],
+                            [float(obb_coords[6]), float(obb_coords[7])]
+                        ]
+                    }
+                
+                yolo_data.append(detection)
+        else:
+            # 对于其他任务类型，我们仍然可以使用to_json()方法
+            json_str = result.to_json()
+            yolo_data = json.loads(json_str)
+            # 对于非OBB任务，保留或获取模型预测的实际类别名称
+            for detection in yolo_data:
+                # 如果是detect任务且已有类别信息，保留它；否则使用模型的names字典获取类别名称
+                if task_type == "detect" and hasattr(result, "names") and result.names:
+                    # 尝试从class_id获取类别名称
+                    class_id = detection.get("class_id", detection.get("class", 0))
+                    detection["name"] = result.names.get(class_id, detection.get("name", "object"))
+                # 对于其他任务类型，保留原始的类别名称，如果没有则使用"object"作为默认值
+                elif "name" not in detection or not detection["name"]:
+                    detection["name"] = "object"
 
         # 确定图片路径和文件名
         if hasattr(result, "path") and result.path:
@@ -238,6 +290,9 @@ def process_single_result(result, config, task_type, save_dir, result_index):
                             y_pct = (y / original_height) * 100
                             points.append([round(x_pct, 6), round(y_pct, 6)])
                 
+                # 直接从detection中获取类别名称（我们已经在构建yolo_data时正确设置了它）
+                class_name = detection.get("name", "object")
+                
                 # 创建与obb_ex.json格式一致的结果项
                 result_item = {
                     "original_width": original_width,
@@ -246,7 +301,7 @@ def process_single_result(result, config, task_type, save_dir, result_index):
                     "value": {
                         "points": points,
                         "closed": True,
-                        "polygonlabels": [detection.get("name", "object")],
+                        "polygonlabels": [class_name],
                     },
                     "id": f"{datetime.now().strftime('%Y%m%d%H%M%S')}_{idx}",
                     "from_name": "label",
@@ -544,10 +599,11 @@ def load_and_override_config(config_path, args):
     if args.name is not None:
         config["name"] = args.name
         logger.info(f"设置name: {args.name}")
-    else:
-        # 设置默认名称
+    elif "name" not in config:
+        # 只有当配置文件中也没有name时，才设置默认名称
         timestamp = datetime.now(BEIJING_TZ).strftime("%Y%m%d%H%M%S")
         config["name"] = f"predict_{timestamp}"
+        logger.info(f"设置默认name: {config['name']}")
 
     # 预测参数
     if args.imgsz is not None:
@@ -1009,3 +1065,5 @@ if __name__ == "__main__":
 # python predict_yolo.py --model yolo11n.pt --source 0 --show  # 摄像头
 # python predict_yolo.py --model yolo11n.pt --source video.mp4 --save --save-json
 # python predict_yolo.py --model yolo11n.pt --source "path/*.jpg" --save-crop --classes 0 2
+# python predict_yolo.py --model hyg_ice_obb_train_20251022172436/weights/best.pt --source data/hyg_ice_obb_1022_other --save-json --conf 0.4 --data-prefix "data/local-files/?d=/root/source/data/gm/ice_weight-251020" --task obb
+# python predict_yolo.py --config configs/predict_config.yaml

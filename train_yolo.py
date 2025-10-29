@@ -83,6 +83,7 @@ import psutil
 import threading
 import time
 import argparse
+import logging
 from datetime import datetime
 import yaml
 import mlflow
@@ -102,6 +103,38 @@ load_dotenv()
 logger = getLogger(__name__)
 
 os.environ['LD_PRELOAD'] = '/lib/x86_64-linux-gnu/libtcmalloc.so.4'
+
+# 配置Ultralytics YOLO设置
+from ultralytics import settings
+# 设置数据集下载路径为项目目录下的datasets文件夹
+project_datasets_dir = os.path.join(project_root, 'datasets')
+# 只设置Ultralytics支持的设置项
+try:
+    settings.update({"datasets_dir": project_datasets_dir})
+    logger.info(f"已配置Ultralytics数据集下载路径: {project_datasets_dir}")
+except KeyError as e:
+    logger.error(f"配置Ultralytics设置失败: {e}")
+
+# 设置全局环境变量用于加速下载
+# 这些环境变量会被curl/wget等命令行工具使用
+os.environ['http_proxy'] = 'http://127.0.0.1:7890'
+os.environ['https_proxy'] = 'http://127.0.0.1:7890'
+os.environ['ALL_PROXY'] = 'socks5://127.0.0.1:7890'
+logger.info("已设置代理环境变量加速下载")
+
+# 确保COCO数据集路径正确
+datasets_coco_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'datasets', 'coco')
+logging.info("COCO数据集路径: %s", datasets_coco_path)
+
+# 创建必要的标签目录
+labels_dirs = [
+    os.path.join(datasets_coco_path, 'labels', 'train2017'),
+    os.path.join(datasets_coco_path, 'labels', 'val2017'),
+    os.path.join(datasets_coco_path, 'labels', 'test2017')
+]
+for labels_dir in labels_dirs:
+    os.makedirs(labels_dir, exist_ok=True)
+    logging.info("确保标签目录存在: %s", labels_dir)
 
 
 def parse_args():
